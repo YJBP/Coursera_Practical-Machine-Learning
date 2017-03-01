@@ -1,0 +1,131 @@
+---
+title: "Practical Machine Learning Project"
+author: "Ymke de Jong"
+output: html_notebook
+---
+# Background project
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Background dataset
+This human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time (like with the Daily Living Activities dataset above). The approach we propose for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer. The "how (well)" investigation has only received little attention so far, even though it potentially provides useful information for a large variety of applications,such as sports training.
+
+In this work (see the paper) we first define quality of execution and investigate three aspects that pertain to qualitative activity recognition: the problem of specifying correct execution, the automatic and robust detection of execution mistakes, and how to provide feedback on the quality of execution to the user. We tried out an on-body sensing approach (dataset here), but also an "ambient sensing approach" (by using Microsoft Kinect - dataset still unavailable)
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+
+
+Read more: http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises#ixzz4ZypHm95A
+
+# Data preparation
+
+##Load libraries
+```{r}
+library(caret); library(rattle); library(rpart); library(rpart.plot)
+library(randomForest); 
+```
+
+##Import data
+```{r}
+# import the data from the URLs
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",na.strings = c("NA", ""))
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",na.strings = c("NA", ""))
+```
+##Data cleaning
+```{r}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+```
+
+
+##Explorative analysis of data
+```{r}
+dimtrain <- dim(training)
+dimtest <- dim(testing)
+
+head(training,5)
+inf <- summary(training$classe)
+```
+
+The dataset contains `r dimtrain[2]` different variables. The training set containts `r dimtrain[1]` occurances and the test set `r dimtest[1]`. You can see that in the last column the ground-truth knowledge of the classe is located. The classe is divided in 5 different instances: A,B,C,D,E, which respetively occures `r inf` times. The first 7 variables does not have predictive influence for the classe since they contain time stamps and range knowledge. 
+
+##Data cleaning
+
+The data cleaning consists of 2 parts:
+1. delete the rows with missing values
+```{r}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+```
+
+2. remove the 7 first columns without any predictive value
+```{r}
+trainData <- training[, -c(1:7)]
+testData <- testing[, -c(1:7)]
+```
+
+After cleaning the training data have `r dim(trainData)[1]` columns left, whereas `r dim(trainData)[2] -1 ` predictive variables and the column 'classes' with grountruth classification are left. The test data has `r dim(testData)[1]` columns.
+
+##Data division
+In order to get out-of-sample errors, we split the cleaned training set trainData into a training set (train, 70%) for prediction and a validation set (valid 30%) to compute the out-of-sample errors.
+```{r}
+set.seed(0128)
+inTrain <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+train <- trainData[inTrain, ]
+valid <- trainData[-inTrain, ]
+
+dim(train)
+dim(valid)
+```
+#Make predictions :)
+Here we consider 5-fold cross validation (default setting in trainControl function is 10) when implementing the algorithm to save a little computing time. Since data transformations may be less important in non-linear models like classification trees, we do not transform any variables.
+
+```{r}
+control <- trainControl(method = "cv", number = 5)
+fit_rpart <- train(classe ~ ., data = train, method = "rpart", 
+                   trControl = control)
+print(fit_rpart, digits = 4)
+```
+
+
+```{r}
+fancyRpartPlot(fit_rpart$finalModel)
+```
+```{r}
+# predict outcomes using validation set
+predict_rpart <- predict(fit_rpart, valid)
+# Show prediction result
+(conf_rpart <- confusionMatrix(valid$classe, predict_rpart))
+```
+```{r}
+(accuracy_rpart <- conf_rpart$overall[1])
+```
+
+## Random forest
+Since classification tree method does not perform well, we try random forest method instead.
+```{r}
+fit_rf <- train(classe ~ ., data = train, method = "rf", 
+                   trControl = control)
+print(fit_rf, digits = 4)
+```
+```{r}
+# predict outcomes using validation set
+predict_rf <- predict(fit_rf, valid)
+# Show prediction result
+(conf_rf <- confusionMatrix(valid$classe, predict_rf))
+```
+```{r}
+(accuracy_rf <- conf_rf$overall[1])
+```
+
+## Test the found model
+We now use random forests to predict the outcome variable classe for the testing set.
+
+```{r}
+(predict(fit_rf, testData))
+```
+
